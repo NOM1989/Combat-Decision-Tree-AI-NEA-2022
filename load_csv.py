@@ -1,18 +1,19 @@
 from __future__ import annotations
+from psycopg2.extensions import (connection as PostgresConnection, cursor as PostgresCursor)
 from collections import Counter
 from psycopg2 import extras
-from query import Querier, GameObjects
-import psycopg2
+from query import Connection, GameObjects
 import csv
 
-class Loader():
+class Loader(Connection):
     '''A class to load game data into the database from a csv file'''
-    def __init__(self, querier, connection, cursor, csv_path) -> None:
-        self.querier: Querier = querier
-        self.conn: psycopg2.connection = connection
-        self.cur: psycopg2.cursor = cursor
+    def __init__(self, connection: PostgresConnection, cursor: PostgresCursor, csv_path) -> None:
+        super().__init__(connection, cursor)
+        # try:
         self.add_items_from_csv(csv_path)
         self.add_recipes_from_csv(csv_path)
+        # except:
+        #     print('Some or all of your csv data is invalid!\nAny valid data has been loaded into the databse.')
 
     def add_ConsumableData_query(self, item_type: str, item_range: range, experience: range, turns: range) -> int:
         '''Adds a row to the ConsumableData table, returning the generated consumable_id'''
@@ -55,25 +56,33 @@ class Loader():
         # 0      1     2      3       4      5     6     7    8       9      10             11          12
         with open(csv_file, newline='') as csvfile:
             file = csv.reader(csvfile)
+            count = 0
             for row in file:
+                count += 1
                 item_type = row[5]
                 item_range, experience, turns = None, None, None
                 if item_type:
-                    item_range = range(int(row[6]), int(row[7]))
-                    experience = range(int(row[8]),int(row[9]))
-                    turns = range(int(row[10]), int(row[11]))
+                    if row[6]:
+                        item_range = range(int(row[6]), int(row[7]))
+                    if row[8]:
+                        experience = range(int(row[8]),int(row[9]))
+                    if row[10]:
+                        turns = range(int(row[10]), int(row[11]))
                 item = GameObjects.Item(
-                    name=row[0],
-                    category=row[4],
-                    value=row[1],
-                    level=int(row[3]),
-                    rarity=row[2],
+                    None,
+                    row[0],
+                    row[4],
+                    row[1],
+                    int(row[3]),
+                    row[2],
                     item_type=item_type,
                     item_range=item_range,
                     experience=experience,
                     turns=turns
                 )
                 self.push_item(item)
+            if count:
+                print(f'Loaded {count} items into the database!')
 
     def fetch_next_recipe_id(self) -> int:
         '''Fetch nect recipe_id from id sequence'''
@@ -110,11 +119,15 @@ class Loader():
         name_id_map = self.querier.items.fetch_name_id_map()
         with open(csv_file, newline='') as csvfile:
             file = csv.reader(csvfile)
+            count = 0
             for row in file:
                 item_name = row[0]
                 if row[12]: #Recipe
+                    count += 1
                     ingredients = Counter(row[12].split(','))
                     recipe: list[GameObjects.Ingredient] = []
                     for item in ingredients:
                         recipe.append(GameObjects.Ingredient(name_id_map[item], ingredients[item]))
                     self.push_recipe(name_id_map[item_name], recipe)
+            if count:
+                print(f'Added recipes to {count} Items.')

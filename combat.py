@@ -2,13 +2,13 @@ from __future__ import annotations # Allows for type hinting of classes within t
 from operator import attrgetter, methodcaller
 from difflib import get_close_matches
 from random import choice, randint, uniform
-from query import Querier, CombatItem
+from query import Querier, GameObjects
 from math import ceil
 
 from copy import deepcopy
 
 class Combat:
-    class Item(CombatItem):
+    class Item(GameObjects.CombatItem):
         '''Class representation of a game item with methods'''
         def __init__(self, item_id: int, name: str, count: int, item_range: range, turns: range, experience: range) -> None:
             super().__init__(item_id, name, count, item_range, turns, experience)
@@ -50,7 +50,7 @@ class Combat:
             self.health: int = health if health else max_health
             self.turn_cooldown: int = 0
             self.move_number: int = 0
-            self.damaging: list[Combat.Item] = [Combat.Item('Punch', 999, range(0,1), range(1,2), range(0,0))] + damaging
+            self.damaging: list[Combat.Item] = damaging
             self.healing: list[Combat.Item] = healing
             self.used: list[Combat.Item] = []
 
@@ -71,6 +71,9 @@ class Combat:
         def update_cooldown(self, amount: int):
             '''Updates the turn_cooldown attribute by `amount`'''
             self.turn_cooldown += amount
+
+        def increment_move_number(self):
+            self.move_number += 1
 
         def health_lost(self):
             '''Returns the integer difference between health and max_health'''
@@ -184,13 +187,21 @@ class Combat:
                 item.current_chance = None
             # return items
 
+        def ensure_move_available(self):
+            '''Combat would break is one of then opponents had no moves,
+            so if both damging and healing is empty then a default punch attack is added to the instance'''
+            if self.damaging + self.healing == []:
+                self.damaging.append(Combat.Item(None, 'punch', 1, range(0,1), range(1,2), range(0,0)))
+
         def remove_item(self, items: list[Combat.Item], item: Combat.Item):
             '''Reduces the count of an item in item_list or moves it to self.used if count is 0'''
-            if item.get_count() > 1:
-                item.reduce_count()
-            else:
-                items.remove(item)
-                self.used.append(item)
+            if item.name != 'punch':
+                if item.get_count() > 1:
+                    item.reduce_count()
+                else:
+                    items.remove(item)
+                    self.used.append(item)
+                self.ensure_move_available()
             return items
             
         def update_health(self, amount: int):
@@ -201,6 +212,7 @@ class Combat:
 
         def use_item(self, item: Combat.Item, target: Combat.BaseClass):
             ''''Uses' the `item` specified (on `target` - if attack)'''
+            self.increment_move_number()
             amount = item.roll_amount()
             self.update_cooldown(item.roll_cooldown())
             if item in self.healing:                
@@ -480,7 +492,6 @@ class Combat:
         def __init__(self, player_id: int, name: str, max_health: int, damaging: list[Combat.Item], healing: list[Combat.Item], health=None) -> None:
             super().__init__(name, max_health, damaging, healing, health)
             self.id = player_id
-            self.has_fled: bool = False
             self.item_names: list[str] = []
 
         def get_all_items(self):
@@ -517,18 +528,22 @@ class Combat:
 
     ###################################################################################
 
-    def __init__(self, querier, player_id) -> None:
+    def __init__(self, querier, player: GameObjects.Player) -> None:
         self.querier: Querier = querier
+        damaging, healing = self.querier.players.fetch_combat_items(player.id)
+
+        # Map returned items to combat items with methods
+        damaging = [Combat.Item(item.id, item.name, item.count, item.range, item.turns, item.experience) for item in damaging]
+        healing = [Combat.Item(item.id, item.name, item.count, item.range, item.turns, item.experience) for item in healing]
+        
         # Create an instance of player and enemy
-        damaging, healing = self.querier.players.fetch_combat_items(player_id)
-        player_data = self.querier.players.fetch_player(player_id)
-        # Map returned items to combat ittems with methods
-        damaging = [Combat.Item(item.name, item.count, item.range, item.turns) for item in damaging]
-        healing = [Combat.Item(item.name, item.count, item.range, item.turns) for item in healing]
-        self.player: Combat.Player = self.Player(player_data.id, player_data.name, player_data.max_health, damaging, healing)
-        self.enemy: Combat.Enemy = self.Enemy(deepcopy(damaging), deepcopy(healing))
+        self.player: Combat.Player = self.Player(player.id, player.name, player.max_health, damaging, healing)
+        self.enemy: Combat.Enemy = self.Enemy(self.player, deepcopy(damaging), deepcopy(healing))
         self.instances: list[Combat.BaseClass] = (self.player, self.enemy)
         self.main()
+
+    def ouput(self, text: str):
+        print(text)
 
     def instances_are_alive(self):
         '''Returns true if all instances in self.instances are alive (health > 0)'''
@@ -557,7 +572,7 @@ class Combat:
         '''Display current information about each player,
         including health and items'''
         for instance in self.instances:
-            instance.ouput(f"{self.create_display_divider(instance.name, 5)}\n\
+            self.ouput(f"{self.create_display_divider(instance.name, 5)}\n\
 {instance.name} {instance.health}/{instance.max_health} HP\n\
 {self.create_display_divider(instance.name, 5)}\n\n\
 Attacks\n\
@@ -570,18 +585,19 @@ Heals\n\
             
     def display_winner(self):
         '''Display the winner of the Combat'''
-        player = self.player
-        enemy = self.enemy
+        player, enemy = self.player, self.enemy
+        self.ouput('\n\nEnd of Combat!')
         if enemy.is_alive():
-            player.ouput(f"\n\nYou were defeated by the {enemy.name}!")
+            self.ouput(f"You were defeated by the {enemy.name}!")
         else:
-            player.ouput(f"\n\nCongratulations {player.name}, you defeated the {enemy.name}!")
+            self.ouput(f"Congratulations {player.name}, you defeated the {enemy.name}!")
+        self.ouput(f'{player.name} made {player.move_number} moves while {enemy.name} made {enemy.move_number} moves')
 
     def update_db_items(self, player: Combat.Player):
         '''Updates the players items in the DB to reflect the changes after some were used in Combat'''
         for item in player.damaging + player.healing + player.used:
             if item.initial_count != item.count: # Dont unnecessarily update the DB
-                self.querier.players.set_item(player.id, item.id, item.initial_count-item.count)
+                self.querier.players.set_or_delete_player_item(player.id, item.id, item.initial_count-item.count)
 
     def main(self):
         while self.instances_are_alive():
@@ -596,3 +612,4 @@ Heals\n\
             self.reduce_cooldowns()
         self.display_winner()
         self.update_db_items(self.player) # Update the db to remove used items
+        self.ouput(f'All items used in combat have been removed from {self.player.name}\'s inventory!')

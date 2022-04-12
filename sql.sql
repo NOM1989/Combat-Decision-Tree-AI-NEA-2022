@@ -1,12 +1,22 @@
+DROP TABLE IF EXISTS Players;
+DROP TABLE IF EXISTS PlayerItems;
+DROP TABLE IF EXISTS Recipes;
+DROP TABLE IF EXISTS ConsumableData;
+DROP TABLE IF EXISTS Items;
+
 -- Player Data (not inv data)
 CREATE TABLE IF NOT EXISTS Players (
-    player_id BIGINT PRIMARY KEY,
+    player_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
     name VARCHAR NOT NULL,
     max_health SMALLINT DEFAULT 10,
     coins INT DEFAULT 1000,
     energy SMALLINT DEFAULT 0,
-    experience INT DEFAULT 0,
+    experience INT DEFAULT 0
 );
+
+-- Select all Players
+SELECT player_id, name
+FROM Players;
 
 -- Player Queries
 -- Create Player
@@ -61,9 +71,13 @@ WHERE player_id = $player_id AND
 id = $item_id;
 
 
+
+
+
 -- Get a players inv
-SELECT id, quantity
+SELECT PlayerItems.item_id, name, quantity
 FROM PlayerItems
+INNER JOIN Items ON Items.item_id = PlayerItems.item_id
 WHERE player_id = $player_id;
 -- OR
 SELECT quantity
@@ -80,7 +94,7 @@ INNER JOIN ConsumableData ON Items.consumable_id = ConsumableData.consumable_id
 WHERE Items.item_id IN (
     SELECT PlayerItems.item_id
     FROM PlayerItems
-    WHERE player_id = $player_id;
+    WHERE player_id = $player_id
 ) AND
 Items.consumable_id IS NOT NULL AND
 type IN ('damage', 'heal');
@@ -132,15 +146,15 @@ CREATE TABLE IF NOT EXISTS ConsumableData (
     max_experience SMALLINT,
     min_turns SMALLINT,
     max_turns SMALLINT,
-    CONSTRAINT if_min_range_then_check_max_range_greater_or_equal CHECK ( (NOT min_range) OR (max_range >= min_range) ),
-    CONSTRAINT if_min_experience_then_check_max_experience_greater_or_equal CHECK ( (NOT min_experience) OR (max_experience >= min_experience) ),
-    CONSTRAINT if_min_turns_then_check_max_turns_greater_or_equal CHECK ( (NOT min_turns) OR (max_turns >= min_turns) )
+    CONSTRAINT if_min_range_then_check_max_range_greater_or_equal CHECK ( (min_range IS NULL) OR (max_range >= min_range) ),
+    CONSTRAINT if_min_experience_then_check_max_experience_greater_or_equal CHECK ( (min_experience IS NULL) OR (max_experience >= min_experience) ),
+    CONSTRAINT if_min_turns_then_check_max_turns_greater_or_equal CHECK ( (min_turns IS NULL) OR (max_turns >= min_turns) )
 );
 
 -- How I will store game things (Spells, Potions, Items, Resources)
 CREATE TABLE IF NOT EXISTS Items (
     item_id INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-    name VARCHAR NOT NULL,
+    name VARCHAR NOT NULL UNIQUE,
     description VARCHAR,
     emoji VARCHAR,
     category VARCHAR NOT NULL,
@@ -156,8 +170,9 @@ CREATE TABLE IF NOT EXISTS Items (
 );
 
 
+
 -- Get all item names and ids
-SELECT id, name
+SELECT item_id, name, category, value, level, rarity, description, emoji
 FROM Items;
 
 -- Select things data
