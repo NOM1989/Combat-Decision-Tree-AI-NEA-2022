@@ -125,26 +125,23 @@ class Combat:
             return total
 
         def get_n_items(self, items: list[Combat.Item], n: int = 1):
-            '''Returns the first n items from items, taking into account the items count attribute
-
-            `WARNING`: the count attribute from items returned by this function will not be accurate so is set to None,
-            this is because we want a list of items to access their values rather than their count.'''
-            if n <= self.calculate_item_count(items):
-                items_list: list[Combat.Item] = []
-                current_item = items.pop(0)
-                current_item.tmp_count = int(current_item.count)
-                while n:
-                    if current_item.tmp_count < 1:
-                        current_item = items.pop(0)
-                        current_item.tmp_count = int(current_item.count)
-                    items_list.append(current_item)
-                    current_item.tmp_count -= 1
-                    n -= 1
-                for item in items_list:
-                    item.tmp_count = None
-                return items_list
-            else:
-                raise IndexError('Specified value of {n} greater than total {items} count.')
+            '''Returns the first n or as many as possible items from items, taking into account the items count attribute'''
+            item_count = self.calculate_item_count(items)
+            if n > item_count:
+                n = item_count
+            items_list: list[Combat.Item] = []
+            current_item = items.pop(0)
+            current_item.tmp_count = int(current_item.count)
+            while n:
+                if current_item.tmp_count < 1:
+                    current_item = items.pop(0)
+                    current_item.tmp_count = int(current_item.count)
+                items_list.append(current_item)
+                current_item.tmp_count -= 1
+                n -= 1
+            for item in items_list:
+                item.tmp_count = None
+            return items_list
 
         def calculate_ranges_chance(self, item_range: range, value: int):
             '''Returns a float between 0 and 1 denoting the % of `item_range` that is >= `value`'''
@@ -163,11 +160,15 @@ class Combat:
             for item in items:
                 item.current_chance = None
 
+        def add_to_used(self, item: Combat.Item):
+            '''Adds the item to the instances used list'''
+            self.used.append(item)
+
         def ensure_move_available(self):
             '''Combat would break is one of then opponents had no moves,
             so if both damging and healing is empty then a default punch attack is added to the instance'''
             if self.damaging + self.healing == []:
-                self.damaging.append(Combat.Item(None, 'punch', 1, range(0,1), range(1,2), range(0,0)))
+                self.damaging.append(Combat.Item(None, 'punch', 1, range(1,2), range(2,2), range(0,0)))
 
         def remove_item(self, items: list[Combat.Item], item: Combat.Item):
             '''Reduces the count of an item in item_list or moves it to self.used if count is 0'''
@@ -175,9 +176,9 @@ class Combat:
                 item.reduce_count()
                 if item.get_count() < 1:
                     items.remove(item)
-                    self.used.append(item)
+                    self.add_to_used(item)
                 self.ensure_move_available()
-            return items
+            # return items
             
         def update_health(self, amount: int):
             '''Updates the health, returing the amount changed'''
@@ -468,18 +469,17 @@ class Combat:
             for item in dangerous_player_items:
                 player.damaging.append(item)
 
+            dangerous_player_items = self.get_n_items(dangerous_player_items, n=self.moves_to_predict)
+            self.debug(f"Player items dangerous to me: {self.debug_display_items(dangerous_player_items)}")
 
-            if len(dangerous_player_items) >= self.moves_to_predict:
-                dangerous_player_items = self.get_n_items(dangerous_player_items, n=self.moves_to_predict)
-                self.debug(f"Player items dangerous to me: {self.debug_display_items(dangerous_player_items)}")
-                in_range_count = 0
+            in_range_count = 0
+            if moves_to_predict == 2:
                 total_possible_count = dangerous_player_items[0].get_range() * dangerous_player_items[1].get_range()
                 for number in dangerous_player_items[0].range:
                     for number2 in dangerous_player_items[1].range:
                         if number + number2 >= self.health:
                             in_range_count += 1
             else:
-                in_range_count = 0
                 total_possible_count = dangerous_player_items[0].get_range()
                 for number in dangerous_player_items[0].range:
                     if number >= self.health:
@@ -617,7 +617,7 @@ Heals\n\
         '''Updates the players items in the DB to reflect the changes after some were used in Combat'''
         for item in player.damaging + player.healing + player.used:
             if item.initial_count != item.count: # Dont unnecessarily update the DB
-                self.querier.players.set_or_delete_player_item(player.id, item.id, item.initial_count-item.count)
+                self.querier.players.set_or_delete_player_item(player.id, item.id, item.count)
 
     def main(self):
         while self.instances_are_alive():

@@ -166,7 +166,7 @@ class CombatMenu(Menu):
         super().__init__(connection, cursor)
         player = self.request_player_id()
         if player:
-            return Combat(self.querier, player)
+            Combat(self.querier, player)
 
 class QuitMenu(Menu):
     '''exit the program'''
