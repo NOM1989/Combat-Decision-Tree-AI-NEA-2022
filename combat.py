@@ -468,14 +468,21 @@ class Combat:
             for item in dangerous_player_items:
                 player.damaging.append(item)
 
-            dangerous_player_items = self.get_n_items(dangerous_player_items, n=self.moves_to_predict)
-            self.debug(f"Player items dangerous to me: {self.debug_display_items(dangerous_player_items)}")
 
-            in_range_count = 0
-            total_possible_count = dangerous_player_items[0].get_range() * dangerous_player_items[1].get_range()
-            for number in dangerous_player_items[0].range:
-                for number2 in dangerous_player_items[1].range:
-                    if number + number2 >= self.health:
+            if len(dangerous_player_items) >= self.moves_to_predict:
+                dangerous_player_items = self.get_n_items(dangerous_player_items, n=self.moves_to_predict)
+                self.debug(f"Player items dangerous to me: {self.debug_display_items(dangerous_player_items)}")
+                in_range_count = 0
+                total_possible_count = dangerous_player_items[0].get_range() * dangerous_player_items[1].get_range()
+                for number in dangerous_player_items[0].range:
+                    for number2 in dangerous_player_items[1].range:
+                        if number + number2 >= self.health:
+                            in_range_count += 1
+            else:
+                in_range_count = 0
+                total_possible_count = dangerous_player_items[0].get_range()
+                for number in dangerous_player_items[0].range:
+                    if number >= self.health:
                         in_range_count += 1
 
             self.debug(f'There is a {round(in_range_count/total_possible_count*100)}% chance I die in the next 2 player moves')
