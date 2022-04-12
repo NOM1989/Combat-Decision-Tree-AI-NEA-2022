@@ -7,13 +7,16 @@ from math import ceil
 
 from copy import deepcopy
 
+debug = True
+
 class Combat:
     class Item(GameObjects.CombatItem):
         '''Class representation of a game item with methods'''
         def __init__(self, item_id: int, name: str, count: int, item_range: range, turns: range, experience: range) -> None:
             super().__init__(item_id, name, count, item_range, turns, experience)
             self.initial_count: int = int(count)
-            self.current_chance: float | None = None
+            self.current_chance: float | None = None # Used for processing
+            self.tmp_count: int = None # Used for processing
 
         def get_range_avg(self):
             '''Return the range avg of the item'''
@@ -87,34 +90,6 @@ class Combat:
             '''Returns a float between 0-1 respresenting the % of health lost'''
             return self.health_lost()/self.max_health
 
-        # def expand(self, high:int, low:int = 0):
-        #     '''Return an expanded'''
-        #     return range(low, high+1)
-
-        # def _get_items_with_cooldown(self, move_list: list, target_cooldown: int):
-        #     '''Returns a list of Item instances from the move_list that have turn cooldowns (Item.turns) that overlap with the target_cooldown
-        #     `move_list`: an instances' damaging or healing list'''
-        #     within_cooldown = []
-        #     for item in move_list:
-        #         if item.turns[0] <= target_cooldown <= item.turns[1]:
-        #             within_cooldown.append(item)
-        #     return within_cooldown
-
-        # def _calculate_range_counts(self, items: list):
-        #     '''Loop through all items in items and total all the possible damages in a Counter object'''
-        #     return Counter([dmg for range_list in (range(item.range[0], item.range[1]+1) for item in items) for dmg in range_list])
-
-        # def simulate_items(self, items: list, depth: int = 2):
-        #     '''Simulates using every combination of attacks the player can use to a specified depth (number of turns)
-        #     sum damages possible and at what turns...?
-        #     '''
-        #     running_range_counts = Counter()
-        #     for current_turn_to_simulate in range(depth):
-        #         new_items = self._get_items_with_cooldown(items, current_turn_to_simulate)
-        #         running_range_counts += self._calculate_range_counts(new_items)
-
-        #         print(running_range_counts)
-
         # Generic function for below ones (too complex)
         # def get_minmax_for_method(self, items: list[Combat.Item], minmax: function, method):
         #     '''Returns the item that has the min/max result of method, depending on `function`
@@ -125,20 +100,20 @@ class Combat:
         #     raise TypeError('{function} must be {min} or {max}')
 
         def get_largest_range(self, items: list[Combat.Item]): #items -> eg. self.damaging or self.healing
-            '''Returns the item that has the largest range'''
-            return max(items, key=methodcaller('get_range'))
+            '''Returns the range of the item with the largest range'''
+            return max(items, key=methodcaller('get_range')).get_range()
         
         def get_largest_range_avg(self, items: list[Combat.Item]):
-            '''Returns the item that has the largest range avg'''
-            return max(items, key=methodcaller('get_range_avg'))
+            '''Returns the range avg of the item with the largest range avg'''
+            return max(items, key=methodcaller('get_range_avg')).get_range_avg()
 
         def get_smallest_range(self, items: list[Combat.Item]):
-            '''Returns the item that has the smallest range'''
-            return min(items, key=methodcaller('get_range'))
+            '''Returns the range of the item with the smallest range'''
+            return min(items, key=methodcaller('get_range')).get_range()
 
         def get_closest_range_avg(self, items: list[Combat.Item], target_value: float):
             '''Returns the range_avg of the item in `items` that's range_avg is closest to `target_value`'''
-            return min(items, key=lambda x:abs(x.get_range_avg()-target_value))
+            return min(items, key=lambda x:abs(x.get_range_avg()-target_value)).get_range_avg()
             # check/test this reurns the range_avg closest above not below
 
         def calculate_item_count(self, items: list[Combat.Item]):
@@ -150,24 +125,26 @@ class Combat:
             return total
 
         def get_n_items(self, items: list[Combat.Item], n: int = 1):
-            '''Returns the first n times from items, taking into account the items count attribute
+            '''Returns the first n items from items, taking into account the items count attribute
 
             `WARNING`: the count attribute from items returned by this function will not be accurate so is set to None,
             this is because we want a list of items to access their values rather than their count.'''
             if n <= self.calculate_item_count(items):
                 items_list: list[Combat.Item] = []
                 current_item = items.pop(0)
+                current_item.tmp_count = int(current_item.count)
                 while n:
-                    if current_item.count < 1:
+                    if current_item.tmp_count < 1:
                         current_item = items.pop(0)
-                    items_list.append(item)
-                    current_item.count -= 1
+                        current_item.tmp_count = int(current_item.count)
+                    items_list.append(current_item)
+                    current_item.tmp_count -= 1
                     n -= 1
                 for item in items_list:
-                    item.count = None
+                    item.tmp_count = None
                 return items_list
             else:
-                raise IndexError('Specified value of kwarg {n} greater than total {items} count.')
+                raise IndexError('Specified value of {n} greater than total {items} count.')
 
         def calculate_ranges_chance(self, item_range: range, value: int):
             '''Returns a float between 0 and 1 denoting the % of `item_range` that is >= `value`'''
@@ -180,12 +157,11 @@ class Combat:
             '''Returns the item that had the higest `current_chance` attribute'''
             return max(items, key=attrgetter('current_chance'))
 
-        def clear_current_chance_attributes(self, items: list[Combat.Item]): # Test if this function is actually nescessary
+        def clear_current_chance_attributes(self, items: list[Combat.Item]):
             '''As items are processed the `current_chance` could be modified temporarily from None,
             this method resets all `current_chance` attrs to None'''
             for item in items:
                 item.current_chance = None
-            # return items
 
         def ensure_move_available(self):
             '''Combat would break is one of then opponents had no moves,
@@ -195,10 +171,9 @@ class Combat:
 
         def remove_item(self, items: list[Combat.Item], item: Combat.Item):
             '''Reduces the count of an item in item_list or moves it to self.used if count is 0'''
-            if item.name != 'punch':
-                if item.get_count() > 1:
-                    item.reduce_count()
-                else:
+            if item.name != 'punch': # If they are using the default punch attack do not remove
+                item.reduce_count()
+                if item.get_count() < 1:
                     items.remove(item)
                     self.used.append(item)
                 self.ensure_move_available()
@@ -230,10 +205,19 @@ class Combat:
     class Enemy(BaseClass):
         '''An AI controlled enemy for the player to face in combat'''
         def __init__(self, Player: Combat.BaseClass, damaging, healing, health=None, difficulty=None, risk=None) -> None:
-            self.difficulty: float = difficulty if difficulty else uniform(0.25, 0.75)
+            self.difficulty: float = difficulty if difficulty else round(uniform(0.25, 0.75), 3)
             super().__init__(self.generate_name(), self.calculate_max_health(Player.max_health), damaging, healing, health)
-            self.risk: float = risk if risk else uniform(0.3, 0.85) # The maximum risk enemy will take
+            self.risk: float = risk if risk else round(uniform(0.3, 0.85), 3) # The maximum risk enemy will take
             self.moves_to_predict: int = 2
+
+        def debug(self, text: str):
+            '''Displays debug information if debug is True'''
+            global debug
+            if debug:
+                print(f'DEBUG: {self.__class__.__name__} - ' + text)
+        
+        def debug_display_items(self, items: list[Combat.Item]):
+            return ', '.join([item.name for item in items])
 
         def calculate_max_health(self, player_max_health):
             '''Returns a maximum health for the enemy based on the difficulty'''
@@ -253,7 +237,6 @@ class Combat:
             return f'{self.get_difficulty_name()} {choice(names)}'
 
         ## Generic Function ##
-            # Example call: max_avg_selections = self.get_items_with_target_method_value(player.damaging, self.get_largest_range_avg(player.damaging), 'get_range_avg')
         def get_items_with_target_method_value(self, items: list[Combat.Item], value_to_match, method_to_get_value):
             '''Returns a list of items from `items` where the result of `method_to_get_value` matches `value_to_match`'''
             return [item for item in items if getattr(item, method_to_get_value)() == value_to_match]
@@ -317,10 +300,12 @@ class Combat:
             if enemy has heal:
                 return most adequate heal
             else:
-                ruh roh!
+                will never occurr.
             '''
             if not self.healing and not self.damaging:
                 raise RuntimeError('Both self.damaging and self.healing are empty, no move to make')
+
+            self.debug('-> Now attempting normal_move')
 
             selected_attack = None
             if self.damaging:
@@ -332,13 +317,13 @@ class Combat:
                     # lower difficulty (.25) --> 0.625 more likely to use stronger attacks earlier on (more time for player react/heal)
 
                 if player.health_remaining_percentage() < health_threshold:
-                    # Player has 'lower' health --> use stonger attacks
+                    self.debug("Player has 'lower' health -> attempting to use stonger attacks")
                     # Sort self.damaging by range_avg (largest first)
-                    self.damaging.sort(key=methodcaller('get_range_avg'))
+                    self.damaging.sort(key=methodcaller('get_range_avg'), reverse=True)
                 else:
-                    # Player has 'higher' health --> use larger range attacks
+                    self.debug("Player has 'higher' health -> attempting to use larger range attacks")
                     # Sort self.damaging by range (largest first)
-                    self.damaging.sort(key=methodcaller('get_range'))
+                    self.damaging.sort(key=methodcaller('get_range'), reverse=True)
                 
 
                 # Now we want to select a % of those attacks
@@ -347,13 +332,17 @@ class Combat:
                     # lower difficulty (.25) --> 66.6% of attacks chosen, less likely to use attack that meets criteria
 
                 selected_attacks = self.select_percentage_of_list(self.damaging, percentage_of_attacks_to_select)
+                self.debug(f'Selected {len(selected_attacks)} possible attack(s): {self.debug_display_items(selected_attacks)}')
 
 
                 # Now we decide if the enemy is on 'lower' or 'higher' health, based on same threshold as above
-                reverse = True # Enemy has 'higher' health --> sort by highest avg cooldown to lowest avg cooldown
                 if self.health_remaining_percentage() < health_threshold:
-                    # Enemy has 'lower' health --> sort by lowest avg cooldown to highest avg cooldown
+                    self.debug("I have 'lower' health -> sort my attacks by lowest to highest avg cooldown")
                     reverse = False
+                else:
+                    self.debug("I have 'higher' health -> sort my attacks by highest to lowest avg cooldown")
+                    reverse = True
+
 
                 selected_attacks.sort(key=methodcaller('get_turn_avg'), reverse=reverse)
 
@@ -361,19 +350,24 @@ class Combat:
                 # Then randomly select one from this heavily narrowed down list
                 # We have narrowed it down so much it is highly unlikely this final list contains more than 1 attack
                 selected_attack = choice(self.select_percentage_of_list(selected_attacks, percentage_of_attacks_to_select))
+                self.debug(f'Selected best suited attack as: {selected_attack.name}')
                 
                 # Now we have a good attack for the current situation
                 # However we also want to take into account the enemys health
                 
+                self.debug('Checking to see if heaing would be more benificial')
+
                 # So we check if health_lost % is > risk and if so, enemy will consider healing
                 if not self.healing or self.health_lost_percentage() < self.risk:
                     # Enemy's health is above risk threshold, no need to heal
                     # OR enemy has no heals
                     # Use suitable attack we found earlier
+                    self.debug(f'No need to heal / I have no healing, using attack: {selected_attack.name}')
                     return selected_attack
 
                 # Else - Have lost a % of health that outweighs risk enemy wants to take
                 # So now find healings that would remedy...
+                self.debug(f'I have lost {round(self.health_lost_percentage()*100)}% which is lower than my risk allows, finding potential heal')
 
             # !!! Notice the indentation difference, the following will happen even if the enemy never had any attacks !!!
 
@@ -381,49 +375,57 @@ class Combat:
             likely_perfect_healing_items = self.find_items_likely_to_roll_required(self.healing, self.health_lost())
             # select a random one (choice is likey from a list of 1 as heals have been narrowed down)
             selected_heal = choice(likely_perfect_healing_items)
+            self.debug(f'Selected likely perfect heal: {selected_heal.name}')
             
 
             if selected_attack:
+                self.debug('Comparing attack to heal to see which is more effective')
                 # Now we have 'the perfect' heal and 'the perfect' attack
                 # Lets compare which one would be more effective, based on the change to the recipients health
                 percentage_change_in_player_health = selected_attack.get_range_avg()/player.max_health
                 percentage_change_in_enemy_health = selected_heal.get_range_avg()/self.max_health
 
                 if percentage_change_in_player_health > percentage_change_in_enemy_health:
+                    self.debug(f'Decided attack is more effective: {selected_attack.name}')
                     return selected_attack
 
             # Else there are no attacks or healing is more effective, so return the selected heal (to use)
+            self.debug(f'Decided to use heal (potentially most effective): {selected_heal.name}')
             return selected_heal
 
-        def get_dangerous_items(self, items: list[Combat.Item], health: int):
+        def get_overlapping_items(self, items: list[Combat.Item], health: int):
             '''Return a list of items where the item range overlaps with the `health` passed if the overlap is above self.risk
             `items`: list of (attack) items
             `health`: health of the enemy or player'''
             dangerous_items: list[Combat.Item] = []
             for item in items:
                 items_current_chance = self.calculate_ranges_chance(item.range, health)
-                if items_current_chance <= self.risk:
+                # self.debug(f'-> {item.name} chance to kill player: {items_current_chance}')
+                if items_current_chance > self.risk:
                     item.current_chance = items_current_chance
                     dangerous_items.append(item)
             return dangerous_items
         
         def can_player_be_killed(self, player: Combat.Player):
             '''Checks if the player can be killed in the next move, returing potential attacks if so'''
-            return self.get_dangerous_items(self.damaging, player.health)
+            self.debug('Looking for items that can kill player this turn')
+            return self.get_overlapping_items(self.damaging, player.health)
 
         # def get_items_with_max_avg(self, items: list[Combat.Item]):
         #     '''Returns a list of items from `items` where the max_avg matches the maximum avg of `items`'''
         #     current_max_avg = self.get_largest_range_avg(items)
         #     return [item for item in items if item.get_range_avg() == current_max_avg]
 
-        def get_items_with_max_range_avg(self, items: list[Combat.Item]): #These can make use of the above insead, just need to explain with comments
+        def get_items_with_max_range_avg(self, items: list[Combat.Item]): # A specific version of the get_items_with_target_method_value() method
             '''Returns a list of items from `items` where the value of the items' range_avg matches the largest range avg in `items`'''
             largest_range_avg = self.get_largest_range_avg(items)
+            # self.debug(f'Largest range avg: {largest_range_avg}')
             return [item for item in items if item.get_range_avg() == largest_range_avg]
         
-        def get_items_with_max_range(self, items: list[Combat.Item]): #These can make use of the above insead, just need to explain with comments
+        def get_items_with_max_range(self, items: list[Combat.Item]): # A specific version of the get_items_with_target_method_value() method
             '''Returns a list of items from `items` where the value of the items' range matches the largest range in `items`'''
             largest_range = self.get_largest_range(items)
+            # self.debug(f'Largest range: {largest_range}')
             return [item for item in items if item.get_range() == largest_range]
 
         def make_move(self, player: Combat.Player) -> Combat.Item:
@@ -437,11 +439,11 @@ class Combat:
                 # current_chance will be above risk if it is in possible_kill_attacks
                 most_likely_kill_attack = self.get_highest_current_chance(possible_kill_attacks)
                 self.clear_current_chance_attributes(possible_kill_attacks)
+                self.debug(f'Found attack that can kill player this move: {most_likely_kill_attack.name}')
                 return most_likely_kill_attack
             
             # Find most dangerous attacks to me
             # These will be the ones with the highest avg dmg, then largest range (to account for worst case)
-            # Doesn't take 'turns' cooldown into account as time complexity woud become too great
 
             max_avg_selections = []
             max_range_selections = []
@@ -452,39 +454,48 @@ class Combat:
                 if not max_range_selections:
                     if not max_avg_selections:
                         max_avg_selections = self.get_items_with_max_range_avg(player.damaging)
+                        # self.debug(f'max_avg_selections: {max_avg_selections}')
                     max_range_selections = self.get_items_with_max_range(max_avg_selections)
-                    max_range_selections.sort(key=methodcaller('get_turns_avg')) #Check if this sorts into the correct way around
+                    max_range_selections.sort(key=methodcaller('get_turn_avg')) #Check if this sorts into the correct way around
                     
                 selection = max_range_selections.pop(0)
                 dangerous_player_items.append(selection)
                 max_avg_selections.remove(selection)
                 player.damaging.remove(selection)
+                # self.debug(f'Identified {selection} as dangerous item')
 
             # Player item processing complete, return player items
             for item in dangerous_player_items:
                 player.damaging.append(item)
 
-            dangerous_player_items = self.get_n_items(dangerous_player_items, self.moves_to_predict, n=2)
+            dangerous_player_items = self.get_n_items(dangerous_player_items, n=self.moves_to_predict)
+            self.debug(f"Player items dangerous to me: {self.debug_display_items(dangerous_player_items)}")
 
             in_range_count = 0
-            total_in_rectangle = dangerous_player_items[0].get_range() * dangerous_player_items[1].get_range()
+            total_possible_count = dangerous_player_items[0].get_range() * dangerous_player_items[1].get_range()
             for number in dangerous_player_items[0].range:
                 for number2 in dangerous_player_items[1].range:
                     if number + number2 >= self.health:
                         in_range_count += 1
 
-            if in_range_count/total_in_rectangle > self.risk:
+            self.debug(f'There is a {round(in_range_count/total_possible_count*100)}% chance I die in the next 2 player moves')
+            if in_range_count/total_possible_count > self.risk:
                 # Attempt to heal, when healing we want to find the perfect healing for the situation
-                if self.health_lost(): #Add 'and self.healing'
+                self.debug(f'Attempting to heal')
+                if self.health_lost() and self.healing:
                     likely_perfect_healing_items = self.find_items_likely_to_roll_required(self.healing, self.health_lost())
                     # Pick the one with lowest avg turns cooldown
-                    return min(likely_perfect_healing_items, key=methodcaller('get_turns_avg')) # the heal to use
+                    heal_to_use = min(likely_perfect_healing_items, key=methodcaller('get_turn_avg')) # the heal to use
+                    self.debug(f'Selected {heal_to_use.name} as the heal to use')
+                    return heal_to_use
+                self.debug('Cannot heal, moving on')
             
             # If this point is reached:
             # - Enemy cannot kill player next move
             # - Player cannot kill enemy in self.moves_to_predict moves
+            self.debug(f'I cannot kill player next move, player cannot kill me in {self.moves_to_predict} moves (based on risk)')
 
-            # --> Basic attack should be carried out
+            # --> Normal attack should be carried out
             return self.normal_move(player)
         
     class Player(BaseClass):
@@ -540,6 +551,8 @@ class Combat:
         self.player: Combat.Player = self.Player(player.id, player.name, player.max_health, damaging, healing)
         self.enemy: Combat.Enemy = self.Enemy(self.player, deepcopy(damaging), deepcopy(healing))
         self.instances: list[Combat.BaseClass] = (self.player, self.enemy)
+        print('Beginning Combat!\n')
+        self.enemy.debug(f'DIFFICULTY: {self.enemy.difficulty} - RISK: {self.enemy.risk}')
         self.main()
 
     def ouput(self, text: str):
@@ -572,9 +585,9 @@ class Combat:
         '''Display current information about each player,
         including health and items'''
         for instance in self.instances:
-            self.ouput(f"{self.create_display_divider(instance.name, 5)}\n\
+            self.ouput(f"{self.create_display_divider(instance.name, 8)}\n\
 {instance.name} {instance.health}/{instance.max_health} HP\n\
-{self.create_display_divider(instance.name, 5)}\n\n\
+{self.create_display_divider(instance.name, 8)}\n\n\
 Attacks\n\
 {self.create_display_divider('Attacks')}\n\
 {self.display_items(instance.damaging)}\n\n\
@@ -613,3 +626,37 @@ Heals\n\
         self.display_winner()
         self.update_db_items(self.player) # Update the db to remove used items
         self.ouput(f'All items used in combat have been removed from {self.player.name}\'s inventory!')
+
+
+
+
+
+
+###############################################################
+# Attempt at writing code to simulate all possible moves,     #
+# However the time complexity was too great so was abanadoned #
+###############################################################
+    # def _get_items_with_cooldown(self, move_list: list, target_cooldown: int):
+    #     '''Returns a list of Item instances from the move_list that have turn cooldowns (Item.turns) that overlap with the target_cooldown
+    #     `move_list`: an instances' damaging or healing list'''
+    #     within_cooldown = []
+    #     for item in move_list:
+    #         if item.turns[0] <= target_cooldown <= item.turns[1]:
+    #             within_cooldown.append(item)
+    #     return within_cooldown
+
+    # def _calculate_range_counts(self, items: list):
+    #     '''Loop through all items in items and total all the possible damages in a Counter object'''
+    #     return Counter([dmg for range_list in (range(item.range[0], item.range[1]+1) for item in items) for dmg in range_list])
+
+    # def simulate_items(self, items: list, depth: int = 2):
+    #     '''Simulates using every combination of attacks the player can use to a specified depth (number of turns)
+    #     sum damages possible and at what turns...?
+    #     '''
+    #     running_range_counts = Counter()
+    #     for current_turn_to_simulate in range(depth):
+    #         new_items = self._get_items_with_cooldown(items, current_turn_to_simulate)
+    #         running_range_counts += self._calculate_range_counts(new_items)
+
+    #         print(running_range_counts)
+###############################################################

@@ -139,7 +139,7 @@ class Players(BaseConnection):
         query = '''DELETE FROM PlayerItems
             WHERE player_id = %s AND
             item_id = %s;'''
-        self.cur.execute(query, player_id, item_id)
+        self.cur.execute(query, (player_id, item_id))
 
     def delete_player_item(self, player_id: int, item_id: int):
         '''Deletes the specified item for the specified player from the PlayerItems table'''
