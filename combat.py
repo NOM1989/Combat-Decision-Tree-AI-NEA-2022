@@ -262,28 +262,23 @@ class Combat:
 
         def normal_move(self, player: Combat.Player):
             '''Returns an Item the enemy should use,
-            There are no immediate opportunities/dangers so this is a broarder move.
-            
-            The choice of move is made based off multiple factors:
-            
-            % Enemy health lost > risk --> enemy could heal (lower difficulty more likely to heal)
-
+                there are no immediate opportunities/dangers so this is a broarder move.'''
+            ### EXPLANATION ###
+            '''The choice of move is made based off multiple factors:
+                % Enemy health lost > risk --> enemy could heal (lower difficulty more likely to heal)
 
             Define lower and higher player health as a %:
                 split around 50% with some variation
                 0.5 + (0.5-difficulty)/2:
                     higher difficulty (.75) --> 0.375 more likely to save stronger attacks for later (less time to react/heal)
                     lower difficulty (.25) --> 0.625 more likely to use stronger attacks earlier on (more time to react/heal)
-
             higher player health --> use larger range attacks
             lower player health --> use stonger attacks
-
 
             Define how to choose and attack:
             possible options = 0.5 + (0.5-diff)/(3/2) % of attacks that meet criteria
                 higher difficulty (.75) --> 33.3% more likely to use attack that meets criteria
                 lower difficulty (.25) --> 66.6% less likely to use attack that meets criteria
-
             then of possible options:
                 High health of enemy --> can use attacks with larger cooldowns
                 use threshold to decide if enemy on higher or lower health
@@ -293,16 +288,15 @@ class Combat:
                     then use 0.5 + (0.5-diff)/(3/2) % again to get the fist % items in that list and randomly pick one
                     automatically put the first item in the list then check if % above required and if not add more (ensures % is not too low)
             
-            
             if enemy has attacks:
                 above checks
                 if enemy has healing, compare healing
                 return attack/heal
             if enemy has heal:
                 return most adequate heal
-            else:
-                will never occurr.
             '''
+            ### END EXPLANATION ###
+
             if not self.healing and not self.damaging:
                 raise RuntimeError('Both self.damaging and self.healing are empty, no move to make')
 
@@ -401,7 +395,6 @@ class Combat:
             dangerous_items: list[Combat.Item] = []
             for item in items:
                 items_current_chance = self.calculate_ranges_chance(item.range, health)
-                # self.debug(f'-> {item.name} chance to kill player: {items_current_chance}')
                 if items_current_chance > self.risk:
                     item.current_chance = items_current_chance
                     dangerous_items.append(item)
@@ -420,13 +413,11 @@ class Combat:
         def get_items_with_max_range_avg(self, items: list[Combat.Item]): # A specific version of the get_items_with_target_method_value() method
             '''Returns a list of items from `items` where the value of the items' range_avg matches the largest range avg in `items`'''
             largest_range_avg = self.get_largest_range_avg(items)
-            # self.debug(f'Largest range avg: {largest_range_avg}')
             return [item for item in items if item.get_range_avg() == largest_range_avg]
         
         def get_items_with_max_range(self, items: list[Combat.Item]): # A specific version of the get_items_with_target_method_value() method
             '''Returns a list of items from `items` where the value of the items' range matches the largest range in `items`'''
             largest_range = self.get_largest_range(items)
-            # self.debug(f'Largest range: {largest_range}')
             return [item for item in items if item.get_range() == largest_range]
 
         def make_move(self, player: Combat.Player) -> Combat.Item:
@@ -455,7 +446,6 @@ class Combat:
                 if not max_range_selections:
                     if not max_avg_selections:
                         max_avg_selections = self.get_items_with_max_range_avg(player.damaging)
-                        # self.debug(f'max_avg_selections: {max_avg_selections}')
                     max_range_selections = self.get_items_with_max_range(max_avg_selections)
                     max_range_selections.sort(key=methodcaller('get_turn_avg')) #Check if this sorts into the correct way around
                     
@@ -463,7 +453,6 @@ class Combat:
                 dangerous_player_items.append(selection)
                 max_avg_selections.remove(selection)
                 player.damaging.remove(selection)
-                # self.debug(f'Identified {selection} as dangerous item')
 
             # Player item processing complete, return player items
             for item in dangerous_player_items:
