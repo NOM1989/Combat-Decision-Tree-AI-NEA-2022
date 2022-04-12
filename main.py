@@ -24,7 +24,7 @@ if __name__ == '__main__':
 
     except (Exception, psycopg2.Error) as error:
         print(f"Error: {type(error).__name__}", error)
-        traceback.print_tb(error.__traceback__)
+        traceback.print_tb(error.__traceback__) # Remove on finish
     finally:
         if connection:
             cursor.close()

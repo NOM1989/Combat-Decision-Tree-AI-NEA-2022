@@ -3,17 +3,19 @@ from psycopg2.extensions import (connection as PostgresConnection, cursor as Pos
 from collections import Counter
 from psycopg2 import extras
 from query import Connection, GameObjects
+import psycopg2
 import csv
 
 class Loader(Connection):
     '''A class to load game data into the database from a csv file'''
     def __init__(self, connection: PostgresConnection, cursor: PostgresCursor, csv_path) -> None:
         super().__init__(connection, cursor)
-        # try:
-        self.add_items_from_csv(csv_path)
-        self.add_recipes_from_csv(csv_path)
-        # except:
-        #     print('Some or all of your csv data is invalid!\nAny valid data has been loaded into the databse.')
+        print('\nAttempting to load data from csv...')
+        try:
+            self.add_items_from_csv(csv_path)
+            self.add_recipes_from_csv(csv_path)
+        except:
+            print('Some or all of your csv data is invalid!\nAny valid data has been loaded into the databse.')
 
     def add_ConsumableData_query(self, item_type: str, item_range: range, experience: range, turns: range) -> int:
         '''Adds a row to the ConsumableData table, returning the generated consumable_id'''
@@ -42,9 +44,12 @@ class Loader(Connection):
     def push_item(self, item: GameObjects.Item):
         '''Adds the `item` to the Items table, adding to the coresponding ConsumableData table if necessary'''
         consumable_id = None
-        if item.type:
-            consumable_id = self.add_ConsumableData_query(item.type, item.range, item.experience, item.turns)
-        self.add_Item_query(item.name, item.category, item.value, item.level, item.rarity, item.description, item.emoji, consumable_id)
+        try:
+            if item.type:
+                consumable_id = self.add_ConsumableData_query(item.type, item.range, item.experience, item.turns)
+            self.add_Item_query(item.name, item.category, item.value, item.level, item.rarity, item.description, item.emoji, consumable_id)
+        except psycopg2.IntegrityError:
+            pass
 
     def add_items_from_csv(self, csv_file):
         '''Loop through a csv file of format:
@@ -109,8 +114,11 @@ class Loader(Connection):
     def push_recipe(self, item_id, recipe: list[GameObjects.Ingredient]):
         '''Adds a recipe to a row in the Items table'''
         recipe_id = self.fetch_next_recipe_id()
-        self.add_ingredients_querys(recipe_id, recipe)
-        self.add_id_to_item_query(recipe_id, item_id)
+        try:
+            self.add_ingredients_querys(recipe_id, recipe)
+            self.add_id_to_item_query(recipe_id, item_id)
+        except psycopg2.IntegrityError:
+            pass
 
     def add_recipes_from_csv(self, csv_file):
         '''Adds recipes to items from a csv file,

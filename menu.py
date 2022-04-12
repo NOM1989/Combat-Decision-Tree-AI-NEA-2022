@@ -16,18 +16,23 @@ class Menu(Connection):
         print('\nWhat would you like to do?')
         print('\n'.join([f'{index+1}. {option:<9} - {options[option].__doc__}' for index, option in enumerate(options)]))
 
-        selection = get_close_matches(input('Select an option: '), options.keys(), n=1)
+        selection = get_close_matches(input('\nSelect an option: '), options.keys(), n=1)
         while not selection:
-            selection = get_close_matches(input('\nInvalid, please select an option: '), options.keys(), n=1)
+            selection = get_close_matches(input('Invalid, please select an option: '), options.keys(), n=1)
         return options[selection[0]]
     
     def request_player_id(self):
         '''Prompts the user for a player_id, returning the corresponding Player or None if invalid'''
         player_id = input('Please enter a player id: ')
+        while not player_id.isdigit():
+            player_id = input('Invalid id, enter a player id: ')
         player = self.querier.players.fetch_player(player_id)
+
         if player:
-            return player 
+            return player
+
         print('Player not found!')
+        return None
 
     def back(self):
         '''return to the main menu'''
@@ -47,7 +52,7 @@ class SetupMenu(Menu):
     def setup(self):
         '''sets up the Databse with all appropriate tables, dropping all existing tables beforehand'''
         Setup(self.conn, self.cur)
-        print('Database has been setup!')
+        print('\nDatabase setup successfully!')
     
     def load(self):
         '''loads items into the database from a csv file'''
@@ -72,18 +77,21 @@ class PlayerMenu(Menu):
     def add(self):
         '''adds a player to the DB'''
         name = input('Please enter a name for the new player: ')
+        while not name.isalpha():
+            name = input('Invalid name! Please enter a name: ')
         player = self.querier.players.add_player(name)
-        print(f'Added player with id:name of \'{player.id}:{player.name}\' to the databse')
+        print(f'\nAdded player with id:name of \'{player.id}:{player.name}\' to the databse')
 
     def remove(self):
         '''removes a player from the DB'''
         player = self.request_player_id()
         if player:
             self.querier.players.delete_player(player.id)
-            print(f'Removed player with id:name of \'{player.id}:{player.name}\' from the databse')
+            print(f'\nRemoved player with id:name of \'{player.id}:{player.name}\' from the databse')
 
     def player_list(self):
         '''displays all current players in the database'''
+        print('\nAll Players:')
         print('\n'.join([f'{player.id}:{player.name}' for player in self.querier.players.fetch_players()]))
 
 class InventoryMenu(Menu):
@@ -117,6 +125,7 @@ class InventoryMenu(Menu):
                 return name_id_map, player, item_id
             print('Invalid item name or id!')
             return name_id_map, player, None
+        return None, None, None
 
     def add(self):
         '''adds/updates an item to/in a Players inventory'''
@@ -126,7 +135,7 @@ class InventoryMenu(Menu):
             while not amount.isdigit():
                 amount = input('Invalid input, try again: ')
             id_name_map = {b: a for a, b in name_id_map.items()} #Reverse the name_id_map so we can recover the name
-            print(f"'{player.name}' now has '{id_name_map[item_id]}' x{self.querier.players.update_player_item(player.id, item_id, amount)}")
+            print(f"\n'{player.name}' now has '{id_name_map[item_id]}' x{self.querier.players.update_player_item(player.id, item_id, amount)}")
 
     def delete(self):
         '''deletes an entry from a players inventory (if present)'''
@@ -134,7 +143,7 @@ class InventoryMenu(Menu):
         if player and item_id:
             id_name_map = {b: a for a, b in name_id_map.items()} #Reverse the name_id_map so we can recover the name
             self.querier.players.delete_player_item(player.id, item_id)
-            print(f"Removed all '{id_name_map[item_id]}' from player: {player.name}")
+            print(f"\nRemoved all '{id_name_map[item_id]}' items from player '{player.name}'")
 
 class ItemMenu(Menu):
     '''actions relating to Item objects'''
@@ -148,6 +157,7 @@ class ItemMenu(Menu):
 
     def item_list(self):
         '''displays all current items in the database'''
+        print('\nAll Items:')
         print('\n'.join([f'{item.id}:{item.name}' for item in self.querier.items.fetch_items()]))
 
 class CombatMenu(Menu):
