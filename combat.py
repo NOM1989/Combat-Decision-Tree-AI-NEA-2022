@@ -1,22 +1,23 @@
-from __future__ import annotations # Allows for type hinting of classes within themselves [https://stackoverflow.com/a/33533514]
+from __future__ import annotations
+from psycopg2.extensions import (connection as PostgresConnection, cursor as PostgresCursor)
 from operator import attrgetter, methodcaller
-from difflib import get_close_matches
 from random import choice, randint, uniform
-from query import Querier, GameObjects
-from math import ceil
-
+from difflib import get_close_matches
+from query import Connection
 from copy import deepcopy
+from math import ceil
+import objects
 
-debug = True
+debug = False
 
-class Combat:
-    class Item(GameObjects.CombatItem):
+class Combat(Connection):
+    class Item(objects.CombatItem):
         '''Class representation of a game item with methods'''
         def __init__(self, item_id: int, name: str, count: int, item_range: range, turns: range, experience: range) -> None:
             super().__init__(item_id, name, count, item_range, turns, experience)
             self.initial_count: int = int(count)
             self.current_chance: float | None = None # Used for processing
-            self.tmp_count: int = None # Used for processing
+            self.tmp_count: int | None = None # Used for processing
 
         def get_range_avg(self):
             '''Return the range avg of the item'''
@@ -56,6 +57,7 @@ class Combat:
             self.damaging: list[Combat.Item] = damaging
             self.healing: list[Combat.Item] = healing
             self.used: list[Combat.Item] = []
+            self.ensure_move_available()
 
         def get_input(self, prompt: str = ''):
             return input(prompt)
@@ -89,15 +91,6 @@ class Combat:
         def health_lost_percentage(self):
             '''Returns a float between 0-1 respresenting the % of health lost'''
             return self.health_lost()/self.max_health
-
-        # Generic function for below ones (too complex)
-        # def get_minmax_for_method(self, items: list[Combat.Item], minmax: function, method):
-        #     '''Returns the item that has the min/max result of method, depending on `function`
-            
-        #     `function`: should be `min` or `max`'''
-        #     if function in (min, max):
-        #         return function(items, key=methodcaller(method))
-        #     raise TypeError('{function} must be {min} or {max}')
 
         def get_largest_range(self, items: list[Combat.Item]): #items -> eg. self.damaging or self.healing
             '''Returns the range of the item with the largest range'''
@@ -178,7 +171,6 @@ class Combat:
                     items.remove(item)
                     self.add_to_used(item)
                 self.ensure_move_available()
-            # return items
             
         def update_health(self, amount: int):
             '''Updates the health, returing the amount changed'''
@@ -201,7 +193,6 @@ class Combat:
             dmg_dealt = target.update_health(-amount)
             self.ouput(f'\n{self.name} attacked {target.name} with {item.name} dealing {dmg_dealt} dmg\n')
             return dmg_dealt
-            
 
     class Enemy(BaseClass):
         '''An AI controlled enemy for the player to face in combat'''
@@ -220,7 +211,7 @@ class Combat:
         def debug_display_items(self, items: list[Combat.Item]):
             return ', '.join([item.name for item in items])
 
-        def calculate_max_health(self, player_max_health):
+        def calculate_max_health(self, player_max_health: int):
             '''Returns a maximum health for the enemy based on the difficulty'''
             return round(player_max_health + player_max_health*(self.difficulty-0.5))
 
@@ -405,11 +396,6 @@ class Combat:
             self.debug('Looking for items that can kill player this turn')
             return self.get_overlapping_items(self.damaging, player.health)
 
-        # def get_items_with_max_avg(self, items: list[Combat.Item]):
-        #     '''Returns a list of items from `items` where the max_avg matches the maximum avg of `items`'''
-        #     current_max_avg = self.get_largest_range_avg(items)
-        #     return [item for item in items if item.get_range_avg() == current_max_avg]
-
         def get_items_with_max_range_avg(self, items: list[Combat.Item]): # A specific version of the get_items_with_target_method_value() method
             '''Returns a list of items from `items` where the value of the items' range_avg matches the largest range avg in `items`'''
             largest_range_avg = self.get_largest_range_avg(items)
@@ -434,57 +420,58 @@ class Combat:
                 self.debug(f'Found attack that can kill player this move: {most_likely_kill_attack.name}')
                 return most_likely_kill_attack
             
-            # Find most dangerous attacks to me
-            # These will be the ones with the highest avg dmg, then largest range (to account for worst case)
+            if player.damaging:
+                # Find most dangerous attacks to me
+                # These will be the ones with the highest avg dmg, then largest range (to account for worst case)
 
-            max_avg_selections = []
-            max_range_selections = []
-            dangerous_player_items = []
-            player_attacks_count = self.calculate_item_count(player.damaging)
-            moves_to_predict = self.moves_to_predict if player_attacks_count >= self.moves_to_predict else player_attacks_count
-            while self.calculate_item_count(dangerous_player_items) < moves_to_predict:
-                if not max_range_selections:
-                    if not max_avg_selections:
-                        max_avg_selections = self.get_items_with_max_range_avg(player.damaging)
-                    max_range_selections = self.get_items_with_max_range(max_avg_selections)
-                    max_range_selections.sort(key=methodcaller('get_turn_avg')) #Check if this sorts into the correct way around
-                    
-                selection = max_range_selections.pop(0)
-                dangerous_player_items.append(selection)
-                max_avg_selections.remove(selection)
-                player.damaging.remove(selection)
+                max_avg_selections = []
+                max_range_selections = []
+                dangerous_player_items = []
+                player_attacks_count = self.calculate_item_count(player.damaging)
+                moves_to_predict = self.moves_to_predict if player_attacks_count >= self.moves_to_predict else player_attacks_count
+                while self.calculate_item_count(dangerous_player_items) < moves_to_predict:
+                    if not max_range_selections:
+                        if not max_avg_selections:
+                            max_avg_selections = self.get_items_with_max_range_avg(player.damaging)
+                        max_range_selections = self.get_items_with_max_range(max_avg_selections)
+                        max_range_selections.sort(key=methodcaller('get_turn_avg')) #Check if this sorts into the correct way around
+                        
+                    selection = max_range_selections.pop(0)
+                    dangerous_player_items.append(selection)
+                    max_avg_selections.remove(selection)
+                    player.damaging.remove(selection)
 
-            # Player item processing complete, return player items
-            for item in dangerous_player_items:
-                player.damaging.append(item)
+                # Player item processing complete, return player items
+                for item in dangerous_player_items:
+                    player.damaging.append(item)
 
-            dangerous_player_items = self.get_n_items(dangerous_player_items, n=self.moves_to_predict)
-            self.debug(f"Player items dangerous to me: {self.debug_display_items(dangerous_player_items)}")
+                dangerous_player_items = self.get_n_items(dangerous_player_items, n=self.moves_to_predict)
+                self.debug(f"Player items dangerous to me: {self.debug_display_items(dangerous_player_items)}")
 
-            in_range_count = 0
-            if moves_to_predict == 2:
-                total_possible_count = dangerous_player_items[0].get_range() * dangerous_player_items[1].get_range()
-                for number in dangerous_player_items[0].range:
-                    for number2 in dangerous_player_items[1].range:
-                        if number + number2 >= self.health:
+                in_range_count = 0
+                if moves_to_predict == 2:
+                    total_possible_count = dangerous_player_items[0].get_range() * dangerous_player_items[1].get_range()
+                    for number in dangerous_player_items[0].range:
+                        for number2 in dangerous_player_items[1].range:
+                            if number + number2 >= self.health:
+                                in_range_count += 1
+                else:
+                    total_possible_count = dangerous_player_items[0].get_range()
+                    for number in dangerous_player_items[0].range:
+                        if number >= self.health:
                             in_range_count += 1
-            else:
-                total_possible_count = dangerous_player_items[0].get_range()
-                for number in dangerous_player_items[0].range:
-                    if number >= self.health:
-                        in_range_count += 1
 
-            self.debug(f'There is a {round(in_range_count/total_possible_count*100)}% chance I die in the next 2 player moves')
-            if in_range_count/total_possible_count > self.risk:
-                # Attempt to heal, when healing we want to find the perfect healing for the situation
-                self.debug(f'Attempting to heal')
-                if self.health_lost() and self.healing:
-                    likely_perfect_healing_items = self.find_items_likely_to_roll_required(self.healing, self.health_lost())
-                    # Pick the one with lowest avg turns cooldown
-                    heal_to_use = min(likely_perfect_healing_items, key=methodcaller('get_turn_avg')) # the heal to use
-                    self.debug(f'Selected {heal_to_use.name} as the heal to use')
-                    return heal_to_use
-                self.debug('Cannot heal, moving on')
+                self.debug(f'There is a {round(in_range_count/total_possible_count*100)}% chance I die in the next 2 player moves')
+                if in_range_count/total_possible_count > self.risk:
+                    # Attempt to heal, when healing we want to find the perfect healing for the situation
+                    self.debug(f'Attempting to heal')
+                    if self.health_lost() and self.healing:
+                        likely_perfect_healing_items = self.find_items_likely_to_roll_required(self.healing, self.health_lost())
+                        # Pick the one with lowest avg turns cooldown
+                        heal_to_use = min(likely_perfect_healing_items, key=methodcaller('get_turn_avg')) # the heal to use
+                        self.debug(f'Selected {heal_to_use.name} as the heal to use')
+                        return heal_to_use
+                    self.debug('Cannot heal, moving on')
             
             # If this point is reached:
             # - Enemy cannot kill player next move
@@ -535,8 +522,8 @@ class Combat:
 
     ###################################################################################
 
-    def __init__(self, querier, player: GameObjects.Player) -> None:
-        self.querier: Querier = querier
+    def __init__(self, connection: PostgresConnection, cursor: PostgresCursor, player: objects.Player) -> None:
+        super().__init__(connection, cursor)
         damaging, healing = self.querier.players.fetch_combat_items(player.id)
 
         # Map returned items to combat items with methods

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from psycopg2.extensions import (connection as PostgresConnection, cursor as PostgresCursor)
+from objects import CombatItem, Item, Player, PlayerItem
 
 class BaseConnection:
     '''Base class for only a DB connection and cursor'''
@@ -62,7 +63,7 @@ class Items(BaseConnection):
 
     def fetch_items(self):
         '''Fetches all items from the database, returing a list of Item objects'''
-        return [GameObjects.Item(*row) for row in self._fetch_items_query()]
+        return [Item(*row) for row in self._fetch_items_query()]
 
 class Players(BaseConnection):
     '''Encompassing class for common Player methods'''
@@ -79,7 +80,7 @@ class Players(BaseConnection):
 
     def add_player(self, player_name: str):
         '''Adds a new player to the DB with specified name, returning a player object'''
-        return GameObjects.Player(*self._add_player_query(player_name))
+        return Player(*self._add_player_query(player_name))
 
     def _delete_player_query(self, player_id: int):
         '''Remove a player from the DB'''
@@ -105,7 +106,7 @@ class Players(BaseConnection):
             returns a Player object if they exist in the DB, else None'''
         res = self._fetch_player_query(player_id)
         if res:
-            return GameObjects.Player(*res)
+            return Player(*res)
         return None
 
     def _fetch_players_query(self):
@@ -117,7 +118,7 @@ class Players(BaseConnection):
 
     def fetch_players(self):
         '''Fetches all players from the database, returing a list of Player objects'''
-        return [GameObjects.Player(*row) for row in self._fetch_players_query()]
+        return [Player(*row) for row in self._fetch_players_query()]
 
     def _fetch_player_items_query(self, player_id):
         '''Fetch all rows from PlayerItems with matching player_id
@@ -132,7 +133,7 @@ class Players(BaseConnection):
     def fetch_player_items(self, player_id):
         '''Fetch all items from the PlayerItems table for specified player_id,
             returning a list of Items'''
-        return [GameObjects.PlayerItem(*row) for row in self._fetch_player_items_query(player_id)]
+        return [PlayerItem(*row) for row in self._fetch_player_items_query(player_id)]
 
     def _delete_player_item_query(self, player_id: int, item_id: int):
         '''Deletes the item for the player from the PlayerItems table'''
@@ -158,7 +159,8 @@ class Players(BaseConnection):
             if the amount is <= 0 the item is removed from the PlayerItems table.
             Note: Assumes the item is in the PlayerItems table'''
         if amount <= 0: # Delete the row from the DB
-            return self._delete_player_item_query(player_id, item_id) # Not actually looking to return anything just a neat way to break
+            self._delete_player_item_query(player_id, item_id)
+            return
         # else: Set quantity to required amount
         self._set_player_item_query(player_id, item_id, amount)
 
@@ -207,10 +209,10 @@ class Players(BaseConnection):
          
     def fetch_combat_items(self, player_id: int):
         '''Returns two lists of CombatItem objects, damaging & healing, for use in Combat'''
-        damaging: list[GameObjects.CombatItem] = []
-        healing: list[GameObjects.CombatItem] = []
+        damaging: list[CombatItem] = []
+        healing: list[CombatItem] = []
         for row in self._fetch_combat_items_query(player_id):
-            item = GameObjects.CombatItem(row[1], row[2], row[3], range(row[4], row[5]), range(row[6], row[7]), range(row[8], row[9]))
+            item = CombatItem(row[1], row[2], row[3], range(row[4], row[5]), range(row[6], row[7]), range(row[8], row[9]))
             if row[0] == 'damage':
                 damaging.append(item)
             else:
@@ -218,110 +220,11 @@ class Players(BaseConnection):
         return damaging, healing
 
 
-class GameObjects:
-    '''Encompassing class for common game object structures'''
-    class CombatItem:
-        '''Class representation of a combat item'''
-        def __init__(self, item_id: int, name: str, count: int, item_range: range, turns: range, experience: range) -> None:
-            self.id = item_id
-            self.name = name
-            self.count = count
-            self.range = item_range
-            self.turns = turns
-            self.experience = experience
-
-    class PlayerItem:
-        '''Class representation of a player item'''
-        def __init__(self, item_id: int, name: str, quantity: int) -> None:
-            self.id = item_id
-            self.name = name
-            self.count = quantity
-
-    class Player:
-        '''Class representation of a player'''
-        def __init__(self, player_id: int, name: str, max_health: int, coins: int, energy: int, experience: int) -> None:
-            self.id = player_id
-            self.name = name
-            self.max_health = max_health
-            self.coins = coins
-            self.energy = energy
-            self.experience = experience
-
-    class Ingredient:
-        '''Class representation of an ingredient'''
-        def __init__(self, item_id: int, quantity: int) -> None:
-            self.item_id = item_id
-            self.quantity = quantity
-
-    class ConsumableData:
-        '''Class representation of Item consumable data'''
-        def __init__(self,
-            item_type: str = None,
-            item_range: range = None,
-            experience: range = None,
-            turns: range = None
-            ) -> None:
-            
-            self.type = item_type
-            if item_range != None:
-                self.range = item_range
-            if experience != None:
-                self.experience = experience
-            if turns != None:
-                self.turns = turns
-
-    class Item(ConsumableData):
-        '''Class representation of an Item'''          
-        def __init__(self,
-                item_id: int,
-                name: str,
-                category: str,
-                value: int,
-                level: int,
-                rarity: str,
-
-                description: str = None,
-                emoji: str = None,
-
-                item_type: str = None,
-                item_range: range = None,
-                experience: range = None,
-                turns: range = None
-            ) -> None:
-            super().__init__(item_type, item_range, experience, turns)
-
-            self.id = item_id
-            self.name = name
-            self.description = description
-            self.emoji = emoji
-            self.category = category
-            self.value = value
-            self.level = level
-            self.rarity = rarity
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+## Old code ##
 # def update(self):
 #     '''Update the DB with the new player data'''
 #     query = '''UPDATE player

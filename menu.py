@@ -1,8 +1,8 @@
 from psycopg2.extensions import (connection as PostgresConnection, cursor as PostgresCursor)
 from difflib import get_close_matches
 from query import Connection
-from load_csv import Loader
 from combat import Combat
+from load import Loader
 from setup import Setup
 from os import path
 
@@ -80,14 +80,14 @@ class PlayerMenu(Menu):
         while not name.isalpha():
             name = input('Invalid name! Please enter a name: ')
         player = self.querier.players.add_player(name)
-        print(f'\nAdded player with id:name of \'{player.id}:{player.name}\' to the databse')
+        print(f"\nAdded player with id:name of '{player.id}:{player.name}' to the database")
 
     def remove(self):
         '''removes a player from the DB'''
         player = self.request_player_id()
         if player:
             self.querier.players.delete_player(player.id)
-            print(f'\nRemoved player with id:name of \'{player.id}:{player.name}\' from the databse')
+            print(f"\nRemoved player with id:name of '{player.id}:{player.name}' from the databse")
 
     def player_list(self):
         '''displays all current players in the database'''
@@ -110,7 +110,7 @@ class InventoryMenu(Menu):
         '''displays a player's Items'''
         player = self.request_player_id()
         if player:
-            print(f'\n{player.name}\'s Items:')
+            print(f"\n{player.name}'s Items:")
             print('\n'.join([f'{item.name} x{item.count}' for item in self.querier.players.fetch_player_items(player.id)]))
 
     def _get_player_and_item(self):
@@ -166,7 +166,7 @@ class CombatMenu(Menu):
         super().__init__(connection, cursor)
         player = self.request_player_id()
         if player:
-            Combat(self.querier, player)
+            Combat(connection, cursor, player)
 
 class QuitMenu(Menu):
     '''exit the program'''
@@ -177,10 +177,7 @@ class QuitMenu(Menu):
 class MainMenu(Menu):
     def __init__(self, connection: PostgresConnection, cursor: PostgresCursor) -> None:
         super().__init__(connection, cursor)
-        self.menu()
-
-    def menu(self):
-        '''Displays the main menu'''
+        # Display the main menu
         options = {
             'Setup': SetupMenu,
             'Players': PlayerMenu,

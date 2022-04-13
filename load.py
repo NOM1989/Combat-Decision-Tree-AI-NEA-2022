@@ -1,8 +1,9 @@
 from __future__ import annotations
 from psycopg2.extensions import (connection as PostgresConnection, cursor as PostgresCursor)
+from objects import Item, Ingredient
 from collections import Counter
+from query import Connection
 from psycopg2 import extras
-from query import Connection, GameObjects
 import psycopg2
 import csv
 
@@ -34,20 +35,20 @@ class Loader(Connection):
             turns.stop))
         return self.cur.fetchone()[0]
 
-    def add_Item_query(self, name: str, category: str, value: int, level: int, rarity: str, description: str = None, emoji: str = None, consumable_id: int = None):
+    def add_item_query(self, name: str, category: str, value: int, level: int, rarity: str, description: str = None, emoji: str = None, consumable_id: int = None):
         '''Adds a row to the Items table, linking the ConsumableData foreign key if provided'''
 
         query = '''INSERT INTO Items(name, description, emoji, category, value, level, rarity, consumable_id)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s);'''
         self.cur.execute(query, (name, description, emoji, category, value, level, rarity, consumable_id))
 
-    def push_item(self, item: GameObjects.Item):
+    def push_item(self, item: Item):
         '''Adds the `item` to the Items table, adding to the coresponding ConsumableData table if necessary'''
         consumable_id = None
         try:
             if item.type:
                 consumable_id = self.add_ConsumableData_query(item.type, item.range, item.experience, item.turns)
-            self.add_Item_query(item.name, item.category, item.value, item.level, item.rarity, item.description, item.emoji, consumable_id)
+            self.add_item_query(item.name, item.category, item.value, item.level, item.rarity, item.description, item.emoji, consumable_id)
         except psycopg2.IntegrityError:
             pass
 
@@ -73,7 +74,7 @@ class Loader(Connection):
                         experience = range(int(row[8]),int(row[9]))
                     if row[10]:
                         turns = range(int(row[10]), int(row[11]))
-                item = GameObjects.Item(
+                item = Item(
                     None,
                     row[0],
                     row[4],
@@ -95,7 +96,7 @@ class Loader(Connection):
         self.cur.execute(query)
         return self.cur.fetchone()[0]
 
-    def add_ingredients_querys(self, recipe_id: int, recipe: list[GameObjects.Ingredient]):
+    def add_ingredients_querys(self, recipe_id: int, recipe: list[Ingredient]):
         '''Adds many rows to the Recipes table respresenting each ingredient'''
         query = '''INSERT INTO Recipes
             VALUES %s;'''
@@ -111,7 +112,7 @@ class Loader(Connection):
             WHERE item_id = %s;'''
         self.cur.execute(query, (recipe_id, item_id))
 
-    def push_recipe(self, item_id, recipe: list[GameObjects.Ingredient]):
+    def push_recipe(self, item_id: int, recipe: list[Ingredient]):
         '''Adds a recipe to a row in the Items table'''
         recipe_id = self.fetch_next_recipe_id()
         try:
@@ -133,9 +134,9 @@ class Loader(Connection):
                 if row[12]: #Recipe
                     count += 1
                     ingredients = Counter(row[12].split(','))
-                    recipe: list[GameObjects.Ingredient] = []
+                    recipe: list[Ingredient] = []
                     for item in ingredients:
-                        recipe.append(GameObjects.Ingredient(name_id_map[item], ingredients[item]))
+                        recipe.append(Ingredient(name_id_map[item], ingredients[item]))
                     self.push_recipe(name_id_map[item_name], recipe)
             if count:
                 print(f'Added recipes to {count} Items.')
